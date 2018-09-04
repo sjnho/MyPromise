@@ -28,14 +28,14 @@ class MyPromise {
     return this.then(null, onRejected)
   }
   then(onResolved, onRejected) {
-    return new MyPromise((resolve, reject) => {
+    let promise2 = new MyPromise((resolve, reject) => {
       let fn = () => {
         EventLoopRun(() => {
           onResolved = typeof onResolved === 'function' ? onResolved : (value) => value
           onRejected = typeof onRejected === 'function' ? onRejected : (value) => { throw value }
           try {
             let x = this._status === MyPromise.FULLFILLED ? onResolved(this._data) : onRejected(this._data)
-            resolveProcedure({ resolve, reject }, x)
+            resolveProcedure(resolve, reject, promise2, x)
           } catch (e) {
             reject(e)
           }
@@ -47,17 +47,25 @@ class MyPromise {
         fn()
       }
     })
+    return promise2
+  }
+  static deferred() {
+    var dfd = {}
+    dfd.promise = new MyPromise((resolve, reject) => {
+      dfd.resolve = resolve
+      dfd.reject = reject
+    })
+    return dfd
   }
 }
 // 根据 x 值，解析 promise 状态 resolveProcedure(promise, x)
-function resolveProcedure({ resolve, reject, promise2 }, x) {
+function resolveProcedure(resolve, reject, promise2, x) {
   // 2.3.1 If promise and x refer to the same object, reject promise with a TypeError as the reason.
   if (promise2 === x) {
-    reject(new TypeError(x));
+    reject(new TypeError('Chaining cycle detected for promise!'));
   }
-
   if (x instanceof MyPromise) {    // 2.3.2 If x is a promise, adopt its state
-    x.then(value => resolveProcedure({ resolve, reject, promise2 }, value), reason => reject(reason));
+    x.then(value => resolveProcedure(resolve, reject, promise2, value), reason => reject(reason));
   } else if ((typeof x === 'object' && x !== null) || (typeof x === 'function')) {  // 2.3.3 
     let resolvedOrRejected = false;
     try {
@@ -65,7 +73,7 @@ function resolveProcedure({ resolve, reject, promise2 }, x) {
       if (typeof then === 'function') {   // 2.3.3 If then is a function, call it with x as this, first argument resolvePromise, and second argument rejectPromise, where:
         then.call(x, value => {
           if (!resolvedOrRejected) {
-            resolveProcedure({ resolve, reject, promise2 }, value); // 2.3.3.3.1 If/when resolvePromise is called with a value y, run [[Resolve]](promise, y).
+            resolveProcedure(resolve, reject, promise2, value); // 2.3.3.3.1 If/when resolvePromise is called with a value y, run [[Resolve]](promise, y).
             resolvedOrRejected = true;
           }
           // 2.3.3.3.3 If both resolvePromise and rejectPromise are called, or multiple calls to the same argument are made, the first call takes precedence, and any further calls are ignored.
